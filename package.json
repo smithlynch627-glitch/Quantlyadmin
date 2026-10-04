@@ -1,0 +1,33 @@
+{
+  "name": "quantly-admin",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --port 5174",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@tanstack/react-query": "^5.103.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "viem": "^2.31.0",
+    "wagmi": "^2.19.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "~5.6.3",
+    "vite": "^6.4.3"
+  },
+  "overrides": {
+    "ws": "^8.21.0",
+    "uuid": "^11.1.1"
+  }
+}
