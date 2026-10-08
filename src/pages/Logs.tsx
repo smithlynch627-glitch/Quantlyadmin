@@ -6,12 +6,12 @@ import { useAuthedApi } from '../lib/tx';
 import { useSafeInfo } from '../lib/useSafe';
 import { Address, Card, EmptyState, Skeleton } from '../components/ui';
 import {
-  IconBan, IconDownload, IconEdit, IconLayers, IconLifebuoy, IconLogs, IconNetwork, IconPen, IconSearch, IconSettings, IconShield, IconTrash, IconUsers, IconZap, IconChevronRight,
+  IconBan, IconDownload, IconEdit, IconLayers, IconLifebuoy, IconLogs, IconNetwork, IconPen, IconSearch, IconSettings, IconShield, IconTrash, IconUsers, IconZap, IconChevronRight, IconKey,
 } from '../components/Icons';
 
 export interface AuditEntry { id: number; actor: string; action: string; target: string | null; details: Record<string, any>; created_at: string }
-type Cat = '' | 'collection' | 'safe' | 'settings' | 'network' | 'admin' | 'ticket' | 'user';
-const CATS: [Cat, string][] = [['', 'All'], ['safe', 'Multisig'], ['collection', 'Collections'], ['settings', 'Site settings'], ['network', 'Network'], ['admin', 'Team'], ['ticket', 'Support'], ['user', 'Users']];
+type Cat = '' | 'collection' | 'safe' | 'settings' | 'network' | 'admin' | 'ticket' | 'user' | 'apikey';
+const CATS: [Cat, string][] = [['', 'All'], ['safe', 'Multisig'], ['collection', 'Collections'], ['settings', 'Site settings'], ['network', 'Network'], ['admin', 'Team'], ['ticket', 'Support'], ['user', 'Users'], ['apikey', 'API keys']];
 
 export function actionIcon(action: string) {
   const [cat, verb] = action.split('.');
@@ -22,6 +22,7 @@ export function actionIcon(action: string) {
   if (cat === 'admin') return <IconUsers size={15} />;
   if (cat === 'ticket') return <IconLifebuoy size={15} />;
   if (cat === 'user') return <IconBan size={15} />;
+  if (cat === 'apikey') return <IconKey size={15} />;
   return <IconLogs size={15} />;
 }
 
@@ -48,6 +49,13 @@ export function actionTitle(e: AuditEntry): string {
     case 'ticket.reply': return `Replied to a ticket${d.status ? ` (${d.status})` : ''}`;
     case 'ticket.update': return 'Updated a ticket';
     case 'ticket.view': return 'Opened a ticket';
+    case 'apikey.approve': return `Approved an API key${d.project ? ` (${d.project})` : ''}`;
+    case 'apikey.reject': return `Turned down an API key request${d.project ? ` (${d.project})` : ''}`;
+    case 'apikey.update': return 'Changed an API key';
+    case 'apikey.view_contact': return 'Viewed an API key contact';
+    case 'apikey.reveal': return 'Owner saw their new API key';
+    case 'apikey.rotate': return 'Owner replaced their API key';
+    case 'apikey.revoke': return d.by === 'owner' ? 'Owner revoked their API key' : 'Revoked an API key';
     default: return e.action.replace('.', ': ').replace(/_/g, ' ');
   }
 }

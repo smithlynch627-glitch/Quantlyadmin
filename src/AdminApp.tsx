@@ -7,10 +7,11 @@ import { clearSession } from './lib/session';
 import { short } from './lib/format';
 import { RANK, useMe, useOverview, type Role } from './lib/queries';
 import { useProposals, useSafeInfo } from './lib/useSafe';
+import { usePendingApiKeys } from './lib/apiKeys';
 import { Address, FloatingMenu, Skeleton, explorer, useToast } from './components/ui';
 import { useWalletUI } from './components/Wallet';
 import {
-  IconCopy, IconDownload, IconExternal, IconHome, IconLayers, IconLifebuoy, IconLock, IconLogs, IconLogoutAlt, IconMenu, IconMoon, IconNetwork,
+  IconCopy, IconDownload, IconExternal, IconHome, IconKey, IconLayers, IconLifebuoy, IconLock, IconLogs, IconLogoutAlt, IconMenu, IconMoon, IconNetwork,
   IconPen, IconSettings, IconShield, IconSliders, IconStar, IconSun, IconUsers, IconVault, IconWallet,
 } from './components/Icons';
 import Overview from './pages/Overview';
@@ -21,6 +22,7 @@ import Import from './pages/Import';
 import Contracts from './pages/Contracts';
 import Support from './pages/Support';
 import Logs from './pages/Logs';
+import ApiKeys from './pages/ApiKeys';
 import SiteSettings from './pages/SiteSettings';
 import BrandingPage from './pages/Branding';
 import LegalPages from './pages/LegalPages';
@@ -30,7 +32,7 @@ import Network from './pages/Network';
 const LOGO = 'https://res.cloudinary.com/otqaz5kp/image/upload/v1791035090/photo_2026-10-03_19-14-32.jpg';
 const useBuiltInLogo = (e: { currentTarget: HTMLImageElement }) => { if (!e.currentTarget.src.endsWith('/logo.svg')) e.currentTarget.src = '/logo.svg'; };
 
-export type Route = 'overview' | 'treasury' | 'multisig' | 'collections' | 'import' | 'contracts' | 'support' | 'logs' | 'settings' | 'branding' | 'legal' | 'team' | 'network';
+export type Route = 'overview' | 'treasury' | 'multisig' | 'collections' | 'import' | 'contracts' | 'support' | 'api-keys' | 'logs' | 'settings' | 'branding' | 'legal' | 'team' | 'network';
 export interface PageProps { role: Role; go: (r: Route) => void }
 type NavItem = { id: Route; label: string; icon: ComponentType<{ size?: number }>; min: Role; title: string; sub: string; page: ComponentType<PageProps> };
 
@@ -49,6 +51,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   ] },
   { group: 'Operations', items: [
     { id: 'support', label: 'Support', icon: IconLifebuoy, min: 'support', title: 'Support tickets', sub: 'Questions and problems from users', page: Support },
+    { id: 'api-keys', label: 'API keys', icon: IconKey, min: 'admin', title: 'API keys', sub: 'Developer key requests, limits and usage of the public API', page: ApiKeys },
     { id: 'logs', label: 'Activity log', icon: IconLogs, min: 'admin', title: 'Activity log', sub: 'Every admin action, newest first', page: Logs },
   ] },
   { group: 'Settings', items: [
@@ -132,6 +135,7 @@ function Shell({ role, address, logout }: { role: Role; address: string; logout:
   const overview = useOverview();
   const queue = useProposals('queue', isAdmin);
   const safe = useSafeInfo();
+  const apiKeys = usePendingApiKeys(isAdmin);
   const me = address.toLowerCase();
   const toSign = useMemo(() => {
     if (!isAdmin || !safe.data?.owners.includes(me)) return 0;
@@ -140,6 +144,7 @@ function Shell({ role, address, logout }: { role: Role; address: string; logout:
   const badges: Partial<Record<Route, { n: number; alert?: boolean }>> = {
     multisig: { n: toSign || (queue.data?.proposals.length ?? 0), alert: toSign > 0 },
     support: { n: overview.data?.tickets.open ?? 0 },
+    'api-keys': { n: apiKeys.data?.counts.pending ?? 0 },
   };
   useEffect(() => { setOpen(false); }, [route]);
   const Page = current.page;

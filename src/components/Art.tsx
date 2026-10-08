@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { hashSeed, mulberry32 } from '../lib/art';
+import { isLoadableMedia } from '../lib/mediaLink';
 
 // Colours come from the theme (see --art-* in styles.css), so generated art follows light and dark.
 const ACCENTS = ['var(--art-a1)', 'var(--art-a2)', 'var(--art-a3)'];
@@ -52,9 +53,15 @@ export function TileArt({ seed, wide = false }: { seed: string; wide?: boolean }
 }
 
 /** Image with skeleton while loading and generated art if it fails. */
-export function SmartImage({ src, alt, fallback }: { src: string; alt: string; fallback: ReactNode }) {
+/** ipfs:// and ar:// links open through a public gateway; https links are used as they are. */
+export const mediaUrl = (u: string) =>
+  u.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${u.slice(7).replace(/^ipfs\//, '')}` : u.startsWith('ar://') ? `https://arweave.net/${u.slice(5)}` : u;
+
+export function SmartImage({ src: raw, alt, fallback }: { src: string; alt: string; fallback: ReactNode }) {
+  // Only public hosts, embedded pictures and the panel's own files are ever loaded (see lib/mediaLink).
+  const src = isLoadableMedia(raw) ? mediaUrl(raw) : '';
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
-  if (state === 'error') return <>{fallback}</>;
+  if (state === 'error' || !src) return <>{fallback}</>;
   return (
     <>
       {state === 'loading' && <div className="skeleton" style={{ position: 'absolute', inset: 0, borderRadius: 0 }} />}
