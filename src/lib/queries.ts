@@ -7,6 +7,8 @@ export const RANK: Record<Role, number> = { support: 1, admin: 2, owner: 3 };
 
 export interface ChainInfo {
   ready: boolean; block: number; wrapped: string; guardian: string | null; marketVersion: number;
+  /** Market v4+: wallet-signature switch and contract-signature gas budgets. */
+  signatures?: { walletOff: boolean; single: number; sweep: number } | null;
   market: { address: string; owner: string; paused: boolean; feeBps: number; feeRecipient: string };
   factory: { address: string; owner: string; paused: boolean; feeBps: number };
   factories: { address: string; owner: string | null; paused: boolean | null; feeBps: number | null; pendingOwner: string | null; current: boolean }[];
@@ -28,7 +30,7 @@ export interface Check { id: string; ok: boolean; level?: 'danger' | 'warning' |
 export interface Managed { key: string; name: string; address: string; owner: string | null; pendingOwner: string | null; paused: boolean | null; ownedBySafe: boolean }
 export interface SafeStatus {
   ready: boolean; owner?: string; guardian: string | null; managed: Managed[];
-  safe: null | { address: string; owners: { address: string; panelRole: Role | null }[]; threshold: number; nonce: number; version: string; modules: string[] | null; guard: string | null; fallbackHandler: string | null; balances: { native: string; wrapped: string } };
+  safe: null | { address: string; owners: { address: string; panelRole: Role | null }[]; threshold: number; nonce: number; version: string; modules: string[] | null; guard: string | null; fallbackHandler: string | null; balances: { native: string; wrapped: string }; pending?: boolean };
   checks?: Check[]; history?: SafeHistoryItem[]; scan?: Scan;
 }
 

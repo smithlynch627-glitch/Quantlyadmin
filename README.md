@@ -36,7 +36,7 @@ the dark theme and remembers the choice on the device.
 |---|---|---|
 | Overview | Marketplace / launchpad / Safe / FeeVault status, sales chart, what needs attention, recent admin activity | support |
 | Treasury | FeeVault and Safe balances, fees per day, withdraw from the FeeVault, send from the Safe, withdrawal status and on-chain history | admin |
-| Multisig | Safe owners, threshold, security checks, transaction queue (sign / execute), history (also actions done with `safe-tx.ps1`), emergency pause, owner changes | admin |
+| Multisig | Safe owners, threshold, security checks, transaction queue (sign / execute), history (every Safe transaction, also ones sent outside the panel), emergency pause, owner changes, finishing a handover | admin |
 | Collections | Search and filter, verified / featured / hidden / mint page, block or enable trading, edit details, extra images (up to 3) and About page, refresh, remove | admin |
 | Import | Bring existing ERC-721 collections on the network into Quantly | admin |
 | Contracts & fees | Trading fee, mint fee, pause and resume, guardian | admin |

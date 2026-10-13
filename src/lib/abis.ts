@@ -24,6 +24,13 @@ export const marketAdminAbi = [
   fn('setGuardian', [a('guardian_')]),
   fn('acceptOwnership'),
   fn('pause'), fn('unpause'),
+  // Market version 4: signature safety
+  fn('version', [], [u('')], 'pure'),
+  fn('walletSignaturesOff', [], [b('')], 'view'),
+  fn('contractSignatureGas', [], [u('', 32)], 'view'),
+  fn('sweepContractSignatureGas', [], [u('', 32)], 'view'),
+  fn('setWalletSignaturesOff', [b('off')]),
+  fn('setContractSignatureGas', [u('single', 32), u('sweep', 32)]),
 ] as const;
 
 export const factoryAdminAbi = [

@@ -18,7 +18,8 @@ export interface Proposal {
   created_by: string; created_at: string; executed_tx: string | null; executed_by: string | null; executed_at: string | null;
   signatures: Signature[];
 }
-export interface SafeInfo { owner: string; isSafe: boolean; safe: string | null; owners: string[]; threshold: number; nonce: number; mismatch: boolean }
+/** `pending`: the marketplace was offered to this Safe (Ownable2Step) and the Safe has not accepted yet. */
+export interface SafeInfo { owner: string; isSafe: boolean; safe: string | null; owners: string[]; threshold: number; nonce: number; mismatch: boolean; pending: boolean }
 export interface Ctx { market: string; vault: string; factories: string[]; wrapped: string; safe: string | null; ownerCount: number | null }
 export type Line = [string, string, ('address' | 'text')?];
 export interface Decoded { known: boolean; fn: string; title: string; lines: Line[]; tone: 'danger' | 'warning' | 'neutral'; kind: string }
@@ -45,7 +46,8 @@ const pctText = (bps: bigint | number) => `${Number(bps) / 100}%`;
 /** Why signing is disabled on this build, or null when every pin is in place. */
 export function pinsProblem(): string | null {
   const missing = [
-    !PINNED.market && 'VITE_MARKET_ADDRESS', !PINNED.chainId && 'VITE_CHAIN_ID', !PINNED.rpc && 'VITE_RPC_URL', !PINNED.safe && 'VITE_SAFE_ADDRESS',
+    !PINNED.market && 'VITE_MARKET_ADDRESS', !PINNED.vault && 'VITE_FEE_VAULT_ADDRESS', !PINNED.factories.length && 'VITE_FACTORY_ADDRESSES',
+    !PINNED.chainId && 'VITE_CHAIN_ID', !PINNED.rpc && 'VITE_RPC_URL', !PINNED.safe && 'VITE_SAFE_ADDRESS',
   ].filter(Boolean);
   if (missing.length) return `Signing is off on this build: set ${missing.join(', ')} in the admin site's Netlify environment, then redeploy.`;
   if (activeChain.id !== PINNED.chainId) return `Signing is off: the API reports chain ${activeChain.id}, but this admin site is built for chain ${PINNED.chainId}.`;
@@ -61,21 +63,37 @@ export function ctxFor(safe: string | null, ownerCount: number | null = null): C
   return { market: lc(c.market), vault: lc(c.vault), factories: c.factories.map(lc), wrapped: lc(c.wrapped), safe: safe ? lc(safe) : null, ownerCount };
 }
 
-/** Reads who owns the pinned marketplace and, when it is a Safe, its owners, threshold and nonce. */
+async function readSafe(address: string) {
+  const chainId = activeChain.id;
+  const [owners, threshold, nonce] = (await Promise.all([
+    readContract(wagmiConfig, { address: address as Address, abi: safeAbi, functionName: 'getOwners', chainId }),
+    readContract(wagmiConfig, { address: address as Address, abi: safeAbi, functionName: 'getThreshold', chainId }),
+    readContract(wagmiConfig, { address: address as Address, abi: safeAbi, functionName: 'nonce', chainId }),
+  ])) as [string[], bigint, bigint];
+  return { owners: owners.map(lc), threshold: Number(threshold), nonce: Number(nonce) };
+}
+
+/**
+ * Reads who owns the pinned marketplace and, when it is a Safe, its owners, threshold and nonce.
+ * During a handover (the marketplace offered to a Safe that has not accepted yet) the offered Safe is returned
+ * with `pending: true`; it may then only propose acceptOwnership.
+ */
 export async function readSafeInfo(): Promise<SafeInfo> {
   const { market } = pinnedContracts();
   const chainId = activeChain.id;
   const owner = lc((await readContract(wagmiConfig, { address: market, abi: marketAdminAbi, functionName: 'owner', chainId })) as string);
   try {
-    const [owners, threshold, nonce] = (await Promise.all([
-      readContract(wagmiConfig, { address: owner as Address, abi: safeAbi, functionName: 'getOwners', chainId }),
-      readContract(wagmiConfig, { address: owner as Address, abi: safeAbi, functionName: 'getThreshold', chainId }),
-      readContract(wagmiConfig, { address: owner as Address, abi: safeAbi, functionName: 'nonce', chainId }),
-    ])) as [string[], bigint, bigint];
-    return { owner, isSafe: true, safe: owner, owners: owners.map(lc), threshold: Number(threshold), nonce: Number(nonce), mismatch: !!PINNED.safe && PINNED.safe !== owner };
-  } catch {
-    return { owner, isSafe: false, safe: null, owners: [], threshold: 0, nonce: 0, mismatch: false };
-  }
+    const s = await readSafe(owner);
+    return { owner, isSafe: true, safe: owner, ...s, mismatch: !!PINNED.safe && PINNED.safe !== owner, pending: false };
+  } catch {}
+  try {
+    const offered = lc((await readContract(wagmiConfig, { address: market, abi: marketAdminAbi, functionName: 'pendingOwner', chainId })) as string);
+    if (offered && offered !== zeroAddress) {
+      const s = await readSafe(offered);
+      return { owner, isSafe: true, safe: offered, ...s, mismatch: !!PINNED.safe && PINNED.safe !== offered, pending: true };
+    }
+  } catch {}
+  return { owner, isSafe: false, safe: null, owners: [], threshold: 0, nonce: 0, mismatch: false, pending: false };
 }
 
 /** Human description of a Safe call. `known: false` means the panel will not sign or execute it. */
@@ -125,6 +143,13 @@ export function decodeCall(to: string, value: bigint | string, data: string, ctx
     case 'market.pause': return base('Pause trading (buys, offers, batch sends)', [], 'warning', 'pause');
     case 'market.unpause': return base('Resume trading', [], 'neutral', 'pause');
     case 'market.acceptOwnership': case 'vault.acceptOwnership': case 'factory.acceptOwnership': return base(`Accept ownership of the ${where}`, [], 'neutral', 'ownership');
+    case 'market.setWalletSignaturesOff':
+      return args[0]
+        ? base('Emergency: refuse every order signed with a wallet key', [['Effect', 'Only contract-wallet orders can trade until this is turned back on']], 'danger', 'signatures')
+        : base('Accept wallet-signed orders again', [], 'warning', 'signatures');
+    case 'market.setContractSignatureGas':
+      if (Number(args[0]) < 100_000 || Number(args[0]) > 8_000_000 || Number(args[1]) < 100_000 || Number(args[1]) > 180_000) return unknown;
+      return base('Set the gas for contract-wallet signatures', [['One trade', `${Number(args[0]).toLocaleString('en-US')} gas`], ['Each sweep item', `${Number(args[1]).toLocaleString('en-US')} gas`]], 'warning', 'signatures');
     case 'factory.setPlatformFeeBps': return base(`Set the mint fee to ${pctText(args[0])}`, [], 'neutral', 'fees');
     case 'factory.pause': return base('Pause new collection launches', [], 'warning', 'pause');
     case 'factory.unpause': return base('Resume collection launches', [], 'neutral', 'pause');
@@ -166,6 +191,15 @@ export const typedData = (safe: string, p: Pick<Proposal, 'to_address' | 'value_
 });
 export type SafeTypedData = ReturnType<typeof typedData>;
 
+/** While the handover is in progress the Safe may only accept ownership (or skip a nonce). */
+const HANDOVER_KINDS = ['ownership', 'cancel'];
+/**
+ * How far ahead of the Safe's current nonce a proposal may be signed. A signature for a far-future nonce stays
+ * valid until that nonce comes up, so a pre-signed action (an unpause, say) could be replayed long after it was
+ * meant. The queue is never this deep in normal use.
+ */
+const MAX_NONCE_AHEAD = 10;
+
 /** Throws unless a new proposal would be allowed; returns the decoded call. */
 export function checkNewCall(to: string, value: bigint, data: string, info: SafeInfo | undefined): Decoded {
   assertPinned();
@@ -173,6 +207,7 @@ export function checkNewCall(to: string, value: bigint, data: string, info: Safe
   if (info.mismatch) throw new Error(`Security check: the marketplace owner ${info.safe} is not the Safe built into this admin site (${PINNED.safe}).`);
   const d = decodeCall(to, value, data, ctxFor(info.safe, info.owners.length));
   if (!d.known) throw new Error('This panel can only propose the listed actions on the marketplace contracts.');
+  if (info.pending && !HANDOVER_KINDS.includes(d.kind)) throw new Error('The handover is not finished yet. Until the Safe owns the marketplace, it can only accept ownership.');
   return d;
 }
 
@@ -184,6 +219,10 @@ export async function verifyProposal(p: Proposal, info: SafeInfo, names: Record<
   if (lc(p.safe) !== info.safe) throw new Error('This proposal is for a different Safe than the one that owns the marketplace.');
   const decoded = decodeCall(p.to_address, p.value_wei, p.data, ctxFor(info.safe, info.owners.length), names);
   if (!decoded.known) throw new Error('This panel does not recognise the call in this proposal, so it will not sign or execute it.');
+  if (info.pending && !HANDOVER_KINDS.includes(decoded.kind)) throw new Error('The handover is not finished yet. Until the Safe owns the marketplace, it can only accept ownership.');
+  const n = Number(p.nonce);
+  if (!Number.isSafeInteger(n) || n < info.nonce) throw new Error(`This proposal's nonce (${p.nonce}) has already been used by the Safe. Nothing was signed.`);
+  if (n > info.nonce + MAX_NONCE_AHEAD) throw new Error(`Security check: this proposal is for nonce ${n}, more than ${MAX_NONCE_AHEAD} ahead of the Safe (${info.nonce}). Nothing was signed.`);
   const typed = typedData(info.safe, p);
   const local = lc(hashTypedData(typed));
   if (local !== lc(p.safe_tx_hash)) throw new Error('Security check: the proposal hash does not match its contents. Nothing was signed.');

@@ -70,7 +70,7 @@ export default function Overview({ role, go }: PageProps) {
           </button>
           <button className="stat stat--link" onClick={() => go('multisig')}>
             <span className="stat__label"><span className="stat__icon"><IconShield size={16} /></span>Multisig</span>
-            <span className="stat__value">{info.data?.isSafe ? `${info.data.threshold} of ${info.data.owners.length}` : info.data ? 'Not set' : '…'}</span>
+            <span className="stat__value">{info.data?.isSafe ? `${info.data.threshold} of ${info.data.owners.length}` : info.data ? 'Not set' : '…'}{info.data?.pending && <small>accepting</small>}</span>
             <span className="stat__sub">{(queue.data?.proposals.length ?? 0)} pending · nonce {info.data?.nonce ?? '—'}</span>
           </button>
           <button className="stat stat--link" onClick={() => go('treasury')}>

@@ -612,3 +612,10 @@ h1, h2, h3, .sidebar__brand b, .ring b, .stat__value { font-family: var(--displa
 [data-theme='dark'] .input, [data-theme='dark'] .select, [data-theme='dark'] .textarea { background: var(--bg); }
 [data-theme='dark'] .switch::after { background: #fff; }
 [data-theme='dark'] .switch:checked::after { background: #fff; }
+
+/* Numbered steps inside a card (Multisig: moving to a Safe, finishing the handover) */
+.steps-list { margin: 0; padding: 0; list-style: none; counter-reset: step; display: grid; gap: 10px; }
+.steps-list li { position: relative; padding-left: 36px; font-size: 14px; line-height: 1.55; color: var(--soft); counter-increment: step; }
+.steps-list li b { color: var(--fg); }
+.steps-list li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; background: var(--accent-soft); color: var(--accent-text); }
+.steps-list li.is-done::before { content: '✓'; background: var(--good-bg); color: var(--good); }

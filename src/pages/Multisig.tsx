@@ -35,9 +35,15 @@ export default function Multisig({ role }: PageProps) {
     return (
       <div className="stack-lg">
         <Alert tone="warning" title="No Safe owns the marketplace yet">
-          The marketplace owner is <span className="mono">{s.owner}</span>, a normal wallet: one stolen key controls fees, pausing and withdrawals. Create a 2-of-3 Safe with
-          <span className="mono"> create-safe.ps1</span> and hand ownership over with <span className="mono">upgrade-v3.ps1</span>; this page then shows owners, signatures and the queue.
+          The marketplace owner is <span className="mono">{s.owner}</span>, a normal wallet: one stolen key controls fees, pausing and withdrawals.
         </Alert>
+        <Card title="Move to a multisig" sub="Three steps. Nothing changes hands until the Safe owners accept here.">
+          <ol className="steps-list">
+            <li><b>Create the Safe.</b> In the contracts folder run <span className="mono">create-safe.ps1</span> with three owner wallets on different devices (2 of 3 signatures). It places the official Safe v1.3.0 contracts on QMS if they are missing.</li>
+            <li><b>Offer ownership.</b> Run <span className="mono">handover-to-safe.ps1</span> with the wallet that owns the contracts today ({short(s.owner)}). Set <span className="mono">VITE_SAFE_ADDRESS</span> on this admin site and redeploy it.</li>
+            <li><b>Accept here.</b> This page then shows the Safe; owners create, sign and execute one "Accept ownership" proposal per contract.</li>
+          </ol>
+        </Card>
         <ManagedCard s={s} />
       </div>
     );
@@ -60,7 +66,7 @@ export default function Multisig({ role }: PageProps) {
             <div><b>{safe.threshold}/{safe.owners.length}</b><span>signatures</span></div>
           </div>
           <div className="safe-hero__main">
-            <div className="row-wrap" style={{ gap: 8 }}><span className="card__title">Safe multisig</span><span className="tag">v{safe.version}</span><Status tone="good">Owns the marketplace</Status></div>
+            <div className="row-wrap" style={{ gap: 8 }}><span className="card__title">Safe multisig</span><span className="tag">v{safe.version}</span>{safe.pending ? <Status tone="warning">Accepting ownership</Status> : <Status tone="good">Owns the marketplace</Status>}</div>
             <Address value={safe.address} full />
             <div className="small soft">Nonce {safe.nonce} · {coinText(safe.balances.native)} {NATIVE} · {coinText(safe.balances.wrapped)} {WRAPPED}</div>
           </div>
@@ -75,6 +81,8 @@ export default function Multisig({ role }: PageProps) {
           </div>
         </div>
       </Card>
+
+      {safe.pending && <HandoverCard s={s} queue={pending} loaded={queue.isSuccess} />}
 
       <div className="grid-main">
         <div className="stack-lg">
@@ -104,7 +112,7 @@ export default function Multisig({ role }: PageProps) {
             </div>
           </Card>
 
-          <Card title="Owners" sub={`${safe.threshold} of ${safe.owners.length} must sign`} right={<button className="btn btn--sm btn--outline" onClick={() => setOwnersOpen(true)}><IconUsers size={15} />Change owners</button>} flush>
+          <Card title="Owners" sub={`${safe.threshold} of ${safe.owners.length} must sign`} right={safe.pending ? undefined : <button className="btn btn--sm btn--outline" onClick={() => setOwnersOpen(true)}><IconUsers size={15} />Change owners</button>} flush>
             <div className="list">
               {safe.owners.map((o, i) => <OwnerRow key={o.address} index={i} owner={o} me={me} canGrant={RANK[role] >= RANK.owner} />)}
             </div>
@@ -176,11 +184,58 @@ function GuardianCard({ guardian }: { guardian: string | null }) {
       {none ? <Alert tone="warning" title="Not set">Pausing then needs owner signatures, which takes longer in an emergency.</Alert> : <div className="row" style={{ justifyContent: 'space-between' }}><span className="small soft">Pause wallet</span><Address value={guardian} label={isGuardian ? 'You' : null} /></div>}
       <div className="row-wrap">
         {isGuardian && <button className="btn btn--sm btn--danger" disabled={!!txBusy} onClick={emergency}>{txBusy ? <span className="spinner" /> : <IconPause size={15} />}Pause trading now</button>}
-        {info.data?.isSafe && <button className="btn btn--sm btn--outline" disabled={!!busy} onClick={change}>{none ? 'Set pause wallet' : 'Change'}</button>}
+        {info.data?.isSafe && !info.data.pending && <button className="btn btn--sm btn--outline" disabled={!!busy} onClick={change}>{none ? 'Set pause wallet' : 'Change'}</button>}
       </div>
     </Card>
   );
 }
+
+const ACCEPT = encodeFunctionData({ abi: marketAdminAbi, functionName: 'acceptOwnership' });
+
+/**
+ * Handover in progress: the contracts were offered to the Safe (handover-to-safe.ps1) and wait for it to accept.
+ * One "Accept ownership" proposal per contract; owners sign them in the queue and any owner executes them.
+ */
+function HandoverCard({ s, queue, loaded }: { s: { managed: Managed[]; safe: { address: string; threshold: number } | null }; queue: import('../lib/safe').Proposal[]; loaded: boolean }) {
+  const info = useSafeInfo();
+  const { propose, busy } = useSafeActions();
+  const safe = lc(s.safe?.address);
+  const waiting = s.managed.filter((m) => !m.ownedBySafe && lc(m.pendingOwner) === safe);
+  const notOffered = s.managed.filter((m) => !m.ownedBySafe && lc(m.pendingOwner) !== safe);
+  const queued = new Set(queue.filter((p) => lc(p.data) === ACCEPT).map((p) => lc(p.to_address)));
+  const toPropose = waiting.filter((m) => !queued.has(lc(m.address)));
+  async function proposeAll() {
+    for (const m of toPropose) {
+      const r = await propose({ to: m.address, data: ACCEPT, label: `Accept ownership of the ${m.name}` }, info.data, { note: 'This is part of the handover to the Safe.' });
+      if (!r) break;
+    }
+  }
+  return (
+    <Card title="Finish the handover" sub={`The contracts were offered to this Safe. Each one changes hands when the Safe accepts it (${s.safe?.threshold ?? 2} signatures).`}>
+      <ol className="steps-list">
+        <li className={toPropose.length ? '' : 'is-done'}><b>Create the proposals.</b> One "Accept ownership" per contract.</li>
+        <li><b>Sign.</b> Each owner opens this page with their own wallet and signs every proposal in the queue below.</li>
+        <li><b>Execute</b> them in nonce order. Each execution is one small transaction.</li>
+      </ol>
+      <div className="list" style={{ marginTop: 6 }}>
+        {s.managed.map((m) => (
+          <div className="list-item" key={m.key}>
+            <div className="list-item__main"><span className="list-item__title">{m.name}</span><Address value={m.address} /></div>
+            {m.ownedBySafe ? <Status tone="good">Accepted</Status>
+              : lc(m.pendingOwner) === safe ? (queued.has(lc(m.address)) ? <Status tone="warning">In the queue</Status> : <Status tone="warning">Waiting for a proposal</Status>)
+              : <Status tone="danger" icon={<IconAlert size={13} />}>Not offered</Status>}
+          </div>
+        ))}
+      </div>
+      {notOffered.length > 0 && <Alert tone="warning" title={`${notOffered.length} contract(s) not offered to the Safe`}>Run handover-to-safe.ps1 again with the wallet that owns them: {notOffered.map((m) => m.name).join(', ')}.</Alert>}
+      {loaded && toPropose.length > 0 && (
+        <button className="btn" disabled={!!busy || !!info.data?.mismatch} onClick={proposeAll}>{busy ? <span className="spinner" /> : <IconPen size={15} />}Create {toPropose.length} acceptance proposal{toPropose.length > 1 ? 's' : ''}</button>
+      )}
+    </Card>
+  );
+}
+
+type Managed = { key: string; name: string; address: string; owner: string | null; pendingOwner: string | null; paused: boolean | null; ownedBySafe: boolean };
 
 function ManagedCard({ s }: { s: { managed: { key: string; name: string; address: string; owner: string | null; pendingOwner: string | null; paused: boolean | null; ownedBySafe: boolean }[]; safe: { address: string } | null } }) {
   return (

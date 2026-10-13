@@ -23,7 +23,8 @@ export default function Treasury({ go }: PageProps) {
   const history = useProposals('history');
   const actions = useSafeActions();
   const f = funds.data;
-  const safe = info.data?.isSafe ? info.data.safe : null;
+  // During a handover the Safe does not own the contracts yet, so money still moves from the old owner.
+  const safe = info.data?.isSafe && !info.data.pending ? info.data.safe : null;
 
   const moneyQueue = (queue.data?.proposals || []).filter((p) => p.kind === 'withdraw' || p.kind === 'transfer');
   const moneyHistory = (history.data?.proposals || []).filter((p) => p.kind === 'withdraw' || p.kind === 'transfer').slice(0, 12);
@@ -38,7 +39,7 @@ export default function Treasury({ go }: PageProps) {
     <div className="stack-lg">
       {!safe && info.data && (
         <Alert tone="warning" title="The contracts are not owned by a Safe">
-          The marketplace owner is <span className="mono">{info.data.owner}</span>. Withdrawals are sent straight from that wallet. Move ownership to a multisig for safety.
+          The marketplace owner is <span className="mono">{info.data.owner}</span>. Withdrawals are sent straight from that wallet. {info.data.pending ? 'The handover to the Safe is waiting for the owners to accept it on the Multisig page.' : 'Move ownership to a multisig for safety: see the Multisig page.'}
         </Alert>
       )}
       {safe && pinsProblem() && <Alert tone="warning" title="Signing is disabled on this build">{pinsProblem()}</Alert>}
