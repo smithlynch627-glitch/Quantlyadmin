@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { encodeFunctionData, type Abi, type Address, type Hex } from 'viem';
 import { useAccount } from 'wagmi';
-import { signTypedData, simulateContract, waitForTransactionReceipt, writeContract } from 'wagmi/actions';
+import { signTypedData, simulateContract, writeContract } from 'wagmi/actions';
 import { activeChain } from '../config';
 import { useDialog, useToast, explorer } from '../components/ui';
 import { useWalletUI } from '../components/Wallet';
@@ -12,6 +12,7 @@ import { safeAbi } from './abis';
 import { short } from './format';
 import { buildSignatures, checkNewCall, readSafeInfo, verifyProposal, type Decoded, type Proposal, type SafeInfo } from './safe';
 import { errorMessage, useAuthedApi, useTx } from './tx';
+import { callOf, suggestFees, waitMined } from './chaintx';
 import { wagmiConfig } from './wagmi';
 
 const lc = (x?: string | null) => (x || '').toLowerCase();
@@ -124,15 +125,16 @@ export function useSafeActions() {
       address: info.safe as Address, abi: safeAbi, functionName: 'execTransaction', account: address, chainId: activeChain.id,
       args: [typed.message.to, typed.message.value, typed.message.data, 0, 0n, 0n, 0n, '0x0000000000000000000000000000000000000000', '0x0000000000000000000000000000000000000000', packed],
     });
-    const hash = await writeContract(wagmiConfig, request as any);
+    const fees = await suggestFees();
+    const hash = await writeContract(wagmiConfig, { ...(request as any), ...fees });
     toast('Waiting for the transaction to confirm…', 'info', { title: 'Sent', action: { label: 'View transaction', href: explorer('tx', hash) } });
-    const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId: activeChain.id, confirmations: 2 });
-    if (receipt.status !== 'success') throw new Error('The transaction failed on-chain.');
-    await authed.post(`/admin/proposals/${p.id}/executed`, { txHash: hash }).catch(() => undefined);
-    toast(d.title, 'success', { title: 'Executed', action: { label: 'View transaction', href: explorer('tx', hash) } });
+    // A speed-up in the wallet lands under a new hash: report the one that is actually in the block.
+    const landed = (await waitMined(hash, address, callOf(request), (message) => toast(message, 'info', { title: 'Still waiting', action: { label: 'View transaction', href: explorer('tx', hash) } }))).transactionHash;
+    await authed.post(`/admin/proposals/${p.id}/executed`, { txHash: landed }).catch(() => undefined);
+    toast(d.title, 'success', { title: 'Executed', action: { label: 'View transaction', href: explorer('tx', landed) } });
     refresh();
     qc.invalidateQueries();
-    return hash;
+    return landed;
   }), [address, authed, dialog, ensureReady, qc, refresh, run, toast]);
 
   const discard = useCallback((p: Proposal, laterCount: number) => run(`discard-${p.id}`, async () => {

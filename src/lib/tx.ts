@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAccount, useSignMessage } from 'wagmi';
-import { simulateContract, waitForTransactionReceipt, writeContract } from 'wagmi/actions';
+import { simulateContract, writeContract } from 'wagmi/actions';
 import { PINNED, activeChain } from '../config';
 import { useToast } from '../components/ui';
 import { useWalletUI } from '../components/Wallet';
 import { api, ApiError } from './api';
 import { withSession } from './session';
+import { callOf, suggestFees, waitMined } from './chaintx';
 import { wagmiConfig } from './wagmi';
 
 export function errorMessage(e: unknown): string {
@@ -54,10 +55,10 @@ export function useTx() {
       }
       if (PINNED.chainId && activeChain.id !== PINNED.chainId) throw new Error(`Security check: the API reports chain ${activeChain.id}, this admin site is built for ${PINNED.chainId}. Nothing was sent.`);
       const { request } = await simulateContract(wagmiConfig, { ...params, account: address, chainId: activeChain.id });
-      const hash = await writeContract(wagmiConfig, request as any);
-      const receipt = await waitForTransactionReceipt(wagmiConfig, { hash, chainId: activeChain.id, confirmations: 2 });
-      if (receipt.status !== 'success') throw new Error('The transaction failed on-chain.');
-      await api.post('/orders/sync', { txHash: hash }).catch(() => undefined);
+      const fees = await suggestFees();
+      const hash = await writeContract(wagmiConfig, { ...(request as any), ...fees });
+      const receipt = await waitMined(hash, address, callOf(request), (message) => toast(message));
+      await api.post('/orders/sync', { txHash: receipt.transactionHash }).catch(() => undefined);
       toast('Transaction confirmed');
       qc.invalidateQueries();
       return receipt;
